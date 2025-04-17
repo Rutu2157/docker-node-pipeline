@@ -1,25 +1,51 @@
 pipeline {
     agent any
 
-    stages {
-        stage('Clone Repository') {
-            steps {
-                git 'https://github.com/your-username/node-docker-app.git'
-            }
-        }
+    environment {
+        IMAGE_NAME = "rutu2157/docker-node-pipeline"
+        DOCKERHUB_CREDENTIALS_ID = "dockerhub-credentials" // Jenkins credentials ID
+    }
 
+    stages {
         stage('Build Docker Image') {
             steps {
                 script {
-                    dockerImage = docker.build("nodeapp:v1")
+                    docker.build("${IMAGE_NAME}")
                 }
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Login to DockerHub') {
             steps {
-                sh 'docker run -d -p 8082:8082 --name nodeapp nodeapp:v1'
+                withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS_ID}", usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
+                    sh 'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin'
+                }
             }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    docker.image("${IMAGE_NAME}").push('latest')
+                }
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                script {
+                    sh """
+                        docker rm -f node-app || true
+                        docker run -d --name node-app -p 3000:3000 ${IMAGE_NAME}:latest
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline Finished.'
         }
     }
 }
